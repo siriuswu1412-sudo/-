@@ -1,0 +1,8 @@
+.DS_Store
+uploads/
+*.log
+node_modules/
+.cache/
+*.traineddata
+*.traineddata.gz
+js/seed.js
