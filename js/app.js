@@ -170,6 +170,12 @@
     saveLocal(state.entries.filter(function (e) { return e.id !== id; }));
   }
 
+  function viewFromHash() {
+    var raw = (location.hash || "").replace(/^#\/?/, "");
+    if (!raw) return "dash";
+    return VIEWS.indexOf(raw) >= 0 ? raw : "dash";
+  }
+
   function go(view, extra) {
     if (VIEWS.indexOf(view) < 0) view = "dash";
     if (view === "entry") state.editingId = extra && extra.edit ? extra.edit : null;
@@ -1486,8 +1492,7 @@
   });
 
   window.addEventListener("hashchange", function () {
-    var v = (location.hash || "#/dash").replace(/^#\//, "");
-    state.view = VIEWS.indexOf(v) >= 0 ? v : "dash";
+    state.view = viewFromHash();
     render();
   });
 
@@ -1502,8 +1507,7 @@
       state.error = err && err.message ? err.message : "打不开本地账本";
     }
     state.ready = true;
-    var v = (location.hash || "#/dash").replace(/^#\//, "");
-    state.view = VIEWS.indexOf(v) >= 0 ? v : "dash";
+    state.view = viewFromHash();
     render();
     if ("serviceWorker" in navigator && location.protocol !== "file:") {
       navigator.serviceWorker.register("./sw.js").catch(function () { /* 安装到主屏幕失败时，账本照常使用 */ });
