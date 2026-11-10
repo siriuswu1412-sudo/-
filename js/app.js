@@ -1260,7 +1260,11 @@
     }
     main.innerHTML =
       "<h2>透视</h2>" +
-      '<p class="lede">行、列和汇总方式可以换。格子里是当前账本的合计，点不进明细。</p>' +
+      '<p class="lede">行、列和汇总方式可以换。导出的就是当前这张表，数字按数值写入，并附上这些账的明细。</p>' +
+      '<div class="form-buttons pivot-export">' +
+      '<button type="button" class="btn" id="btn-pivot-xlsx">导出 Excel</button>' +
+      '<button type="button" class="btn ghost" id="btn-pivot-all">导出全部维度</button>' +
+      "</div>" +
       fold("行、列和值", '<div class="pivot-controls">' +
       "<label>行" + select("p-row", BJD.DIMS, p.row) + "</label>" +
       "<label>列" + select("p-col", BJD.DIMS, p.col) + "</label>" +
@@ -1276,7 +1280,30 @@
         paintPivot();
       });
     });
+    document.getElementById("btn-pivot-xlsx").addEventListener("click", function () { exportPivot(false); });
+    document.getElementById("btn-pivot-all").addEventListener("click", function () { exportPivot(true); });
     paintPivot();
+  }
+
+  function exportPivot(allDims) {
+    try {
+      var bytes = BJD.buildPivotWorkbook(state.entries, {
+        row: state.pivot.row,
+        col: state.pivot.col,
+        metric: state.pivot.metric,
+        allDims: !!allDims
+      });
+      var name = BJD.pivotFileName(state.pivot.row, new Date(), !!allDims);
+      var blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      Promise.resolve(downloadBlob(blob, name)).then(function () {
+        toast(allDims ? "已导出全部维度" : "已导出透视");
+      }).catch(function (err) {
+        if (err && err.name === "AbortError") return;
+        toast(err && err.message ? err.message : "没有导出");
+      });
+    } catch (err) {
+      toast(err && err.message ? err.message : "没有导出");
+    }
   }
 
   function paintPivot() {
@@ -1362,14 +1389,26 @@
     return "匣记-账本-" + day + "." + ext;
   }
 
+  function shareFile(blob, name) {
+    var file = new File([blob], name, { type: blob.type || "application/octet-stream" });
+    if (!navigator.share) return Promise.reject(new Error("这台浏览器不能下载文件"));
+    if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+      return Promise.reject(new Error("这台浏览器不能分享这个文件"));
+    }
+    return navigator.share({ files: [file], title: name });
+  }
+
   function downloadBlob(blob, name) {
     var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    if (typeof a.download === "undefined") return shareFile(blob, name);
+    var url = URL.createObjectURL(blob);
+    a.href = url;
     a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1500);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2500);
+    return Promise.resolve();
   }
 
   function exportXlsx() {

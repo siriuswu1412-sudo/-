@@ -899,6 +899,117 @@
     return patch;
   }
 
+  var DIMS = [
+    ["category", "分类"],
+    ["maker", "出品"],
+    ["month", "月份"],
+    ["size", "尺寸"],
+    ["status", "状态"],
+    ["acquisition", "入手"],
+    ["project", "企划"],
+    ["tier", "档位"]
+  ];
+  var METRICS = [
+    ["spent", "支出合计"],
+    ["recouped", "回血合计"],
+    ["net", "净额合计"],
+    ["qty", "购买数量"],
+    ["count", "笔数"]
+  ];
+
+  function dimLabel(dim) {
+    for (var i = 0; i < DIMS.length; i++) if (DIMS[i][0] === dim) return DIMS[i][1];
+    return dim || "维度";
+  }
+
+  function pivotMatrix(entries, rowDim, colDim, metric) {
+    var p = pivot(entries || [], rowDim, colDim, metric);
+    var header = [dimLabel(rowDim)].concat(p.cols, ["合计"]);
+    var colTotals = p.cols.map(function () { return 0; });
+    var body = p.rows.map(function (r) {
+      var rowTotal = 0;
+      var cells = p.cols.map(function (c, i) {
+        var n = cellAt(p, r, c);
+        rowTotal += n;
+        colTotals[i] += n;
+        return n;
+      });
+      return [r].concat(cells, [rowTotal]);
+    });
+    var grand = colTotals.reduce(function (sum, n) { return sum + n; }, 0);
+    return [header].concat(body, [["合计"].concat(colTotals, [grand])]);
+  }
+
+  function uniqueSheetName(name, used) {
+    var cleaned = String(name || "透视").replace(/[\\/?*[\]:]/g, " ").replace(/\s+/g, " ").trim() || "透视";
+    if (cleaned.length > 31) cleaned = cleaned.slice(0, 31);
+    var base = cleaned;
+    var n = 2;
+    while (used[cleaned]) {
+      var suffix = "-" + n;
+      cleaned = base.slice(0, 31 - suffix.length) + suffix;
+      n += 1;
+    }
+    used[cleaned] = true;
+    return cleaned;
+  }
+
+  function sheetFromMatrix(matrix) {
+    var X = getXLSX();
+    var ws = X.utils.aoa_to_sheet(matrix);
+    if (ws["!ref"]) {
+      var range = X.utils.decode_range(ws["!ref"]);
+      for (var r = 1; r <= range.e.r; r++) {
+        for (var c = 1; c <= range.e.c; c++) {
+          var addr = X.utils.encode_cell({ r: r, c: c });
+          var cell = ws[addr];
+          var value = cell && cell.v != null && cell.v !== "" ? Number(cell.v) : 0;
+          if (!isFinite(value)) value = 0;
+          ws[addr] = { t: "n", v: value };
+        }
+      }
+    }
+    ws["!cols"] = (matrix[0] || []).map(function (head, i) {
+      var width = String(head == null ? "" : head).length;
+      matrix.forEach(function (row) {
+        var len = row[i] == null ? 0 : String(row[i]).length;
+        if (len > width) width = len;
+      });
+      return { wch: Math.min(28, Math.max(8, width + 2)) };
+    });
+    return ws;
+  }
+
+  function buildPivotWorkbook(entries, options) {
+    var X = getXLSX();
+    var opts = options || {};
+    var rowDim = opts.row || "category";
+    var colDim = opts.col || "size";
+    var metric = opts.metric || "spent";
+    var list = entries || [];
+    var wb = X.utils.book_new();
+    var used = {};
+    function append(name, ws) {
+      X.utils.book_append_sheet(wb, ws, uniqueSheetName(name, used));
+    }
+    if (opts.allDims) {
+      DIMS.forEach(function (pair) {
+        append(pair[1], sheetFromMatrix(pivotMatrix(list, pair[0], colDim, metric)));
+      });
+    } else {
+      append("按" + dimLabel(rowDim), sheetFromMatrix(pivotMatrix(list, rowDim, colDim, metric)));
+      append("明细", X.utils.aoa_to_sheet(entriesToMatrix(list)));
+    }
+    return X.write(wb, { bookType: "xlsx", type: "array" });
+  }
+
+  function pivotFileName(rowDim, date, allDims) {
+    var d = date || new Date();
+    var day = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());
+    if (allDims) return "匣记-透视-全部维度-" + day + ".xlsx";
+    return "匣记-透视-按" + dimLabel(rowDim) + "-" + day + ".xlsx";
+  }
+
   var VISION_PROMPT = [
     "你在帮一位球关节人偶（BJD）收藏者记账。从这张截图提取账目，只输出一个 JSON 对象，不要解释。",
     "截图可能是购物订单、众筹/摩点定金或尾款、或闲鱼出物。",
@@ -922,23 +1033,8 @@
     TIERS: TIERS,
     GIFT_PRESETS: GIFT_PRESETS,
     EXPORT_HEADERS: EXPORT_HEADERS,
-    DIMS: [
-      ["category", "分类"],
-      ["maker", "出品"],
-      ["month", "月份"],
-      ["size", "尺寸"],
-      ["status", "状态"],
-      ["acquisition", "入手"],
-      ["project", "企划"],
-      ["tier", "档位"]
-    ],
-    METRICS: [
-      ["spent", "支出合计"],
-      ["recouped", "回血合计"],
-      ["net", "净额合计"],
-      ["qty", "购买数量"],
-      ["count", "笔数"]
-    ],
+    DIMS: DIMS,
+    METRICS: METRICS,
     blankEntry: blankEntry,
     num: num,
     spent: spent,
@@ -952,6 +1048,9 @@
     stamp: stamp,
     summarize: summarize,
     pivot: pivot,
+    pivotMatrix: pivotMatrix,
+    buildPivotWorkbook: buildPivotWorkbook,
+    pivotFileName: pivotFileName,
     cellAt: cellAt,
     dimValue: dimValue,
     parseWorkbook: parseWorkbook,

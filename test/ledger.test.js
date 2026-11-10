@@ -211,4 +211,60 @@ assert.strictEqual(BJD.net(pendingEntry), -38);
 assert.strictEqual(entries.length, 85);
 assert.strictEqual(summary.net, -4484);
 
+assert.strictEqual(BJD.pivotFileName("category", new Date(2026, 10, 10), false), "匣记-透视-按分类-20261110.xlsx");
+assert.strictEqual(BJD.pivotFileName("size", new Date(2026, 0, 2), true), "匣记-透视-全部维度-20260102.xlsx");
+
+function sheetRows(wb, name) {
+  const sheet = wb.Sheets[name];
+  assert.ok(sheet, "missing sheet " + name);
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null });
+}
+
+const spentBytes = BJD.buildPivotWorkbook(entries, { row: "category", col: "size", metric: "spent" });
+const spentWb = XLSX.read(spentBytes, { type: "array" });
+assert.deepStrictEqual(spentWb.SheetNames, ["按分类", "明细"]);
+const spentRows = sheetRows(spentWb, "按分类");
+assert.strictEqual(spentRows[0][0], "分类");
+assert.strictEqual(spentRows[0][spentRows[0].length - 1], "合计");
+assert.strictEqual(spentRows[spentRows.length - 1][0], "合计");
+assert.strictEqual(spentRows[spentRows.length - 1][spentRows[0].length - 1], 7670);
+const sizeCol = spentRows[0].indexOf("未填尺寸");
+const bodyRow = spentRows.find((row) => row[0] === "素体");
+assert.strictEqual(bodyRow[sizeCol], 300);
+const spentAddr = XLSX.utils.encode_cell({ r: spentRows.indexOf(bodyRow), c: sizeCol });
+assert.strictEqual(spentWb.Sheets["按分类"][spentAddr].t, "n");
+assert.strictEqual(typeof spentWb.Sheets["按分类"][spentAddr].v, "number");
+let spentColumnTotal = 0;
+spentRows.slice(1, -1).forEach((row) => { spentColumnTotal += row[sizeCol]; });
+assert.strictEqual(spentColumnTotal, spentRows[spentRows.length - 1][sizeCol]);
+
+const detailBack = BJD.parseWorkbook(spentWb);
+assert.strictEqual(detailBack.sheetName, "明细");
+const detailSum = BJD.summarize(detailBack.entries);
+assert.strictEqual(detailSum.count, 85);
+assert.strictEqual(detailSum.spent, 7670);
+assert.strictEqual(detailSum.recouped, 3186);
+assert.strictEqual(detailSum.net, -4484);
+
+const netWb = XLSX.read(BJD.buildPivotWorkbook(entries, { row: "maker", col: "month", metric: "net" }), { type: "array" });
+const netRows = sheetRows(netWb, "按出品");
+assert.strictEqual(netRows[0][0], "出品");
+assert.strictEqual(netRows[netRows.length - 1][netRows[0].length - 1], -4484);
+const netAddr = XLSX.utils.encode_cell({ r: netRows.length - 1, c: netRows[0].length - 1 });
+assert.strictEqual(netWb.Sheets["按出品"][netAddr].t, "n");
+
+const recWb = XLSX.read(BJD.buildPivotWorkbook(entries, { row: "month", col: "category", metric: "recouped" }), { type: "array" });
+const recRows = sheetRows(recWb, "按月份");
+assert.strictEqual(recRows[recRows.length - 1][recRows[0].length - 1], 3186);
+
+const allWb = XLSX.read(BJD.buildPivotWorkbook(entries, { col: "size", metric: "spent", allDims: true }), { type: "array" });
+assert.deepStrictEqual(allWb.SheetNames, ["分类", "出品", "月份", "尺寸", "状态", "入手", "企划", "档位"]);
+allWb.SheetNames.forEach((name) => {
+  const rows = sheetRows(allWb, name);
+  assert.strictEqual(rows[rows.length - 1][0], "合计");
+  assert.strictEqual(rows[rows.length - 1][rows[0].length - 1], 7670, name);
+  const addr = XLSX.utils.encode_cell({ r: rows.length - 1, c: rows[0].length - 1 });
+  assert.strictEqual(allWb.Sheets[name][addr].t, "n", name);
+});
+
 console.log("ledger tests ok", summary.count, "spent", summary.spent, "net", summary.net);

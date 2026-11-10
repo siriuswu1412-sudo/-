@@ -196,6 +196,7 @@ details.more .inner { padding-top: 10px; }
 .form-buttons { display: flex; gap: 8px; }
 .calc { font-size: 13px; color: #4e433a; }
 
+.pivot-export { margin: 0 0 12px; }
 .pivot-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-bottom: 12px; }
 .pivot-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .pivot-controls select { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }

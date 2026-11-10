@@ -1,4 +1,4 @@
-var CACHE = "xiaji-shell-4";
+var CACHE = "xiaji-shell-5";
 var SHELL = [
   "./",
   "./index.html",
